@@ -22,7 +22,7 @@ source.include_exts = py,png,jpg,kv,atlas
 #source.exclude_exts = spec
 
 # (list) List of directory to exclude (let empty to not exclude anything)
-#source.exclude_dirs = tests, bin, venv
+source.exclude_dirs = tests, bin, venv
 
 # (list) List of exclusions using pattern matching
 # Do not prefix with './'
@@ -37,7 +37,7 @@ version = 0.1
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = kivy,cashu,wheel,loguru
+requirements=kivy,cashu,anyio,asn1crypto,attrs,base58,bech32,bip32,bitstring,bolt11,certifi,cffi,click,colorama,cryptography,ecdsa,environs,exceptiongroup,fastapi,h11,httpcore,httpx[socks],idna,importlib-metadata,loguru,marshmallow,mnemonic,outcome,packaging,pycparser,pycryptodomex,pydantic,python-dotenv,represent,setuptools,six,sniffio,socksio,sqlalchemy-aio,sqlalchemy,starlette,typing-extensions,uvicorn,websocket-client,wheel,win32-setctime,zipp,secp256k1
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes

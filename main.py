@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 import time
 from datetime import datetime
 from functools import wraps
@@ -9,12 +10,18 @@ from itertools import groupby, islice
 from operator import itemgetter
 from os import listdir
 from os.path import isdir, join
+import traceback
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+
+from lxmf_wallet.wallet import Wallet as Wallet
+
+from loguru import logger
+
 from helpers import (
     verify_mint
 )
@@ -28,13 +35,10 @@ from cashu.wallet.crud import (
     get_reserved_proofs,
     get_seed_and_mnemonic,
 )
-from cashu.wallet.wallet import Wallet as Wallet
 from cashu.wallet.helpers import (
    deserialize_token_from_string,
    init_wallet,
     list_mints,
-    receive,
-    send,
 )
 #from cashu.nostr import receive_nostr, send_nostr
 
@@ -49,6 +53,71 @@ def coro(f):
         return asyncio.run(f(*args, **kwargs))
 
     return wrapper
+
+
+async def redeem_TokenV3_multimint(wallet: Wallet, token: TokenV3):
+    """
+    Helper function to iterate thruogh a token with multiple mints and redeem them from
+    these mints one keyset at a time.
+    """
+    for t in token.token:
+        assert t.mint, Exception(
+            "redeem_TokenV3_multimint: multimint redeem without URL"
+        )
+        mint_wallet = await Wallet.with_db(
+            t.mint, os.path.join(settings.cashu_dir, wallet.name)
+        )
+
+        keysets = mint_wallet._get_proofs_keysets(t.proofs)
+        logger.debug(f"Keysets in tokens: {keysets}")
+        # loop over all keysets
+        for keyset in set(keysets):
+            await mint_wallet.load_mint()
+            # redeem proofs of this keyset
+            redeem_proofs = [p for p in t.proofs if p.id == keyset]
+            _, _ = await mint_wallet.redeem(redeem_proofs)
+            print(f"Received {sum_proofs(redeem_proofs)} sats")
+
+
+async def receive(
+    wallet: Wallet,
+    tokenObj: TokenV3,
+):
+    logger.debug(f"receive: {tokenObj}")
+    proofs = [p for t in tokenObj.token for p in t.proofs]
+
+    includes_mint_info: bool = any([t.mint for t in tokenObj.token])
+
+    if includes_mint_info:
+        # redeem tokens with new wallet instances
+        await redeem_TokenV3_multimint(
+            wallet,
+            tokenObj,
+        )
+    else:
+        # this is very legacy code, virtually any token should have mint information
+        # no mint information present, we extract the proofs and use wallet's default mint
+        # first we load the mint URL from the DB
+        keyset_in_token = proofs[0].id
+        assert keyset_in_token
+        # we get the keyset from the db
+        mint_keysets = await get_keyset(id=keyset_in_token, db=wallet.db)
+        assert mint_keysets, Exception("we don't know this keyset")
+        assert mint_keysets.mint_url, Exception("we don't know this mint's URL")
+        # now we have the URL
+        mint_wallet = await Wallet.with_db(
+            mint_keysets.mint_url,
+            os.path.join(settings.cashu_dir, wallet.name),
+        )
+        await mint_wallet.load_mint(keyset_in_token)
+        _, _ = await mint_wallet.redeem(proofs)
+        print(f"Received {sum_proofs(proofs)} sats")
+
+    # reload main wallet so the balance updates
+    await wallet.load_proofs(reload=True)
+    wallet.status()
+    return wallet.available_balance
+
 
 async def pay(ctx, invoice: str, yes: bool):
     wallet: Wallet = ctx.obj["WALLET"]
@@ -543,7 +612,12 @@ class MainWindow(BoxLayout):
         await init_wallet(wallet, load_proofs=True)
         await self.update_balance()
         self.status_label.text="Wallet initialized, loading mint..."
-        await wallet.load_mint()
+        try:
+            await wallet.load_mint()
+        except Exception as e:
+            self.status_label.text=f"Error while loading mint: {e}"
+            logger.exception(e)
+            raise e
         self.status_label.text="All ready !"
 
     def __init__(self, **kwargs):
@@ -601,10 +675,20 @@ class NutbandApp(App):
         return MainWindow()
 
     def on_start(self):
-        asyncio.create_task(self.root.initialize_wallet())
+        task = asyncio.create_task(self.root.initialize_wallet())
+        async def print_exception(task):
+            await task
+            if task.done() and not task.cancelled():
+                exception = task.exception()
+                if exception:
+                    print("Exception:", exception)
+                    traceback.print_tb(exception.__traceback__)
+        asyncio.create_task(print_exception(task))
+
 
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
+    loop.set_debug(True)
     loop.run_until_complete(NutbandApp().async_run(async_lib='asyncio'))
     loop.close()
