@@ -7,6 +7,12 @@ Should be buildable to apk and ipa through buildozer, running on android,
 ios and desktop platforms. I have not managed to build anything else than
 desktop now though.
 
+## Video introduction
+
+I made a short video introduction about this project:
+
+[![Nutband - a post fiat apocalypse Cashu client working over Reticulum](https://i.ytimg.com/vi/HAX8GFn5uCI/mqdefault.jpg)](https://www.youtube.com/watch?v=HAX8GFn5uCI "Nutband - a post fiat apocalypse Cashu client working over Reticulum")
+
 ## Goal
 
 The goal of this project is to experiment with cashu over [Reticulum](https://github.com/markqvist/Reticulum) mesh network protocol using
