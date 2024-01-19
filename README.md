@@ -12,9 +12,7 @@ desktop now though.
 The goal of this project is to experiment with cashu over [Reticulum](https://github.com/markqvist/Reticulum) mesh network protocol using
 [LXMF](https://github.com/markqvist/LXMF).
 
-We'll see where do I get.
-
-## Status
+## Status = short version
 
 Only sending and receiving tokens is enabled, mint selection or invoices 
 do not work yet.
@@ -49,3 +47,21 @@ The map is now static in source code:
 You should change the URL of the mint and the identity. URL does not have to work,
 it can be bogus.
 
+## Status and plans
+
+Some things that I would like to improve:
+
+ - the radios have very low bandwidth. I refresh keysets on the launch, but that might not be the best idea, it can add a minute until launch. The UI is responsive though 
+ - user interface is done in Kivy, so this should compile straight to APK and iOS app. That's why I based it on nutshell (a Python Cashu implementation). Reticulum stack is also pure python. The problem is that nutshell indirectly depends on sec256k1 and bitarray which are C libraries and they don't compile well using buildozer. It's a dependency of a dependency, so I can't easily replace it, even though there are pure python implementations available (not api compatible though). I don't know how to solve this and so far I settled on desktop. If anyone has skills with building for Android and iOS, pull requests welcome.
+ - keyset sharing is very inefficient, I think an xpub based schema could work better. The mint could say "this xpub, derive keys according to standard denominations yourself". Not sure if it's interesting for mainstream cashu, maybe it could be a parameter during requesting keysets ("please give me your keysets, I'm OK with xpub, I can derive them myself"). 
+ - I should pack the jsons better, in binary form and compress it.
+
+ ## Building
+
+ My build and dev environment [is dockerized](https://github.com/jooray/docker-xrdp).
+
+ ## Useful pieces
+
+ The lxmf client and proxy are possibly useful beside this project. The client (`lxmf_wrapper_client.py`) has get and post methods that are somewhat compatible with httpx.AsyncClient API (somewhat = enough that nutband runs and nutshell library thinks it's talking to a http server).
+
+ The `lxmf_proxy_server.py` contains a standalone proxy that listens for LXMF requests, decodes them, sends them over through HTTP and delivers a reply over another LXMF message. Pairing is done using random IDs.
