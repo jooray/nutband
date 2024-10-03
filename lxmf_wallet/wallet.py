@@ -17,23 +17,9 @@ from loguru import logger
 from cashu.core.base import (
     BlindedMessage,
     BlindedSignature,
-    CheckFeesRequest,
-    CheckSpendableRequest,
-    CheckSpendableResponse,
     DLEQWallet,
-    GetInfoResponse,
-    GetMeltResponse,
-    GetMintResponse,
     Invoice,
-    KeysetsResponse,
-    PostMeltRequest,
-    PostMintRequest,
-    PostMintResponse,
-    PostRestoreResponse,
-    PostSplitRequest,
     Proof,
-    TokenV2,
-    TokenV2Mint,
     TokenV3,
     TokenV3Token,
     WalletKeyset,
@@ -43,13 +29,14 @@ from cashu.core.crypto.secp import PrivateKey, PublicKey
 from cashu.core.db import Database
 from cashu.core.helpers import calculate_number_of_blank_outputs, sum_proofs
 from cashu.core.migrations import migrate_databases
+from cashu.core.models import CheckFeesRequest_deprecated, CheckSpendableRequest_deprecated, CheckSpendableResponse_deprecated, GetInfoResponse, PostMeltResponse_deprecated, GetMintResponse_deprecated, KeysetsResponse, PostMeltRequest, PostMintRequest, PostMintResponse, PostRestoreResponse, PostSwapRequest
 from cashu.core.p2pk import Secret
 from cashu.core.settings import settings
 from cashu.core.split import amount_split
 from cashu.tor.tor import TorProxy
 from cashu.wallet.crud import (
     bump_secret_derivation,
-    get_keyset,
+    get_keysets,
     get_proofs,
     invalidate_proof,
     secret_used,
@@ -193,7 +180,7 @@ class LedgerAPI(object):
         if keyset_id:
             # check if current keyset is in db
             logger.trace(f"Checking if keyset {keyset_id} is in database.")
-            keyset_local = await get_keyset(keyset_id, db=self.db)
+            keyset_local = await get_keysets(keyset_id, db=self.db)
             if keyset_local:
                 logger.trace(f"Found keyset {keyset_id} in database.")
             else:
@@ -229,7 +216,7 @@ class LedgerAPI(object):
 
         # if the keyset is not in the database, store it
         if keyset_local is None:
-            keyset_local_from_mint = await get_keyset(keyset.id, db=self.db)
+            keyset_local_from_mint = await get_keysets(keyset.id, db=self.db)
             if not keyset_local_from_mint:
                 logger.debug(f"Storing new mint keyset: {keyset.id}")
                 await store_keyset(keyset=keyset, db=self.db)
@@ -417,7 +404,7 @@ class LedgerAPI(object):
         resp = await self.httpx.get(join(self.url, "mint"), params={"amount": amount})
         self.raise_on_error(resp)
         return_dict = resp.json()
-        mint_response = GetMintResponse.parse_obj(return_dict)
+        mint_response = GetMintResponse_deprecated.parse_obj(return_dict)
         decoded_invoice = bolt11.decode(mint_response.pr)
         return Invoice(
             amount=amount,
@@ -470,7 +457,7 @@ class LedgerAPI(object):
     ) -> List[BlindedSignature]:
         """Consume proofs and create new promises based on amount split."""
         logger.debug("Calling split. POST /split")
-        split_payload = PostSplitRequest(proofs=proofs, outputs=outputs)
+        split_payload = PostSwapRequest(proofs=proofs, outputs=outputs)
 
         # construct payload
         def _splitrequest_include_fields(proofs: List[Proof]):
@@ -507,7 +494,7 @@ class LedgerAPI(object):
         """
         Checks whether the secrets in proofs are already spent or not and returns a list of booleans.
         """
-        payload = CheckSpendableRequest(proofs=proofs)
+        payload = CheckSpendableRequest_deprecated(proofs=proofs)
 
         def _check_proof_state_include_fields(proofs):
             """strips away fields from the model that aren't necessary for the /split"""
@@ -522,14 +509,14 @@ class LedgerAPI(object):
         self.raise_on_error(resp)
 
         return_dict = resp.json()
-        states = CheckSpendableResponse.parse_obj(return_dict)
+        states = CheckSpendableResponse_deprecated.parse_obj(return_dict)
         return states
 
     @async_set_httpx_client
     @async_ensure_mint_loaded
     async def check_fees(self, payment_request: str):
         """Checks whether the Lightning payment is internal."""
-        payload = CheckFeesRequest(pr=payment_request)
+        payload = CheckFeesRequest_deprecated(pr=payment_request)
         resp = await self.httpx.post(
             join(self.url, "checkfees"),
             json=payload.dict(),
@@ -543,7 +530,7 @@ class LedgerAPI(object):
     @async_ensure_mint_loaded
     async def pay_lightning(
         self, proofs: List[Proof], invoice: str, outputs: Optional[List[BlindedMessage]]
-    ) -> GetMeltResponse:
+    ) -> PostMeltResponse_deprecated:
         """
         Accepts proofs and a lightning invoice to pay in exchange.
         """
@@ -568,7 +555,7 @@ class LedgerAPI(object):
         self.raise_on_error(resp)
         return_dict = resp.json()
 
-        return GetMeltResponse.parse_obj(return_dict)
+        return PostMeltResponse_deprecated.parse_obj(return_dict)
 
     @async_set_httpx_client
     @async_ensure_mint_loaded
@@ -840,7 +827,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
 
     async def pay_lightning(
         self, proofs: List[Proof], invoice: str, fee_reserve_sat: int
-    ) -> GetMeltResponse:
+    ) -> PostMeltResponse_deprecated:
         """Pays a lightning invoice and returns the status of the payment.
 
         Args:
@@ -1074,7 +1061,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         for id in set([p.id for p in proofs]):
             if id is None:
                 continue
-            keyset_crud = await get_keyset(id=id, db=self.db)
+            keyset_crud = await get_keysets(id=id, db=self.db)
             assert keyset_crud is not None, f"keyset {id} not found"
             keyset: WalletKeyset = keyset_crud
             assert keyset.mint_url
@@ -1102,7 +1089,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         """
         mint_urls: Dict[str, List[str]] = {}
         for ks in set(keysets):
-            keyset_db = await get_keyset(id=ks, db=self.db)
+            keyset_db = await get_keysets(id=ks, db=self.db)
             if keyset_db and keyset_db.mint_url:
                 mint_urls[keyset_db.mint_url] = (
                     mint_urls[keyset_db.mint_url] + [ks]
@@ -1144,7 +1131,7 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         return token
 
     async def serialize_proofs(
-        self, proofs: List[Proof], include_mints=True, include_dleq=False, legacy=False
+        self, proofs: List[Proof], include_mints=True, include_dleq=False
     ) -> str:
         """Produces sharable token with proofs and mint information.
 
@@ -1157,63 +1144,8 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
             str: Serialized Cashu token
         """
 
-        if legacy:
-            # V2 tokens
-            token_v2 = await self._make_token_v2(proofs, include_mints)
-            return await self._serialize_token_base64_tokenv2(token_v2)
-
-            # # deprecated code for V1 tokens
-            # proofs_serialized = [p.to_dict() for p in proofs]
-            # return base64.urlsafe_b64encode(
-            #     json.dumps(proofs_serialized).encode()
-            # ).decode()
-
-        # V3 tokens
         token = await self._make_token(proofs, include_mints)
         return token.serialize(include_dleq)
-
-    async def _make_token_v2(self, proofs: List[Proof], include_mints=True) -> TokenV2:
-        """
-        Takes list of proofs and produces a TokenV2 by looking up
-        the keyset id and mint URLs from the database.
-        """
-        # build token
-        token = TokenV2(proofs=proofs)
-
-        # add mint information to the token, if requested
-        if include_mints:
-            # dummy object to hold information about the mint
-            mints: Dict[str, TokenV2Mint] = {}
-            # dummy object to hold all keyset id's we need to fetch from the db later
-            keysets: List[str] = [proof.id for proof in proofs if proof.id]
-            # iterate through unique keyset ids
-            for id in set(keysets):
-                # load the keyset from the db
-                keyset_db = await get_keyset(id=id, db=self.db)
-                if keyset_db and keyset_db.mint_url and keyset_db.id:
-                    # we group all mints according to URL
-                    if keyset_db.mint_url not in mints:
-                        mints[keyset_db.mint_url] = TokenV2Mint(
-                            url=keyset_db.mint_url,
-                            ids=[keyset_db.id],
-                        )
-                    else:
-                        # if a mint URL has multiple keysets, append to the already existing list
-                        mints[keyset_db.mint_url].ids.append(keyset_db.id)
-            if len(mints) > 0:
-                # add mints grouped by url to the token
-                token.mints = list(mints.values())
-        return token
-
-    async def _serialize_token_base64_tokenv2(self, token: TokenV2) -> str:
-        """
-        Takes a TokenV2 and serializes it in urlsafe_base64.
-        """
-        # encode the token as a base64 string
-        token_base64 = base64.urlsafe_b64encode(
-            json.dumps(token.to_dict()).encode()
-        ).decode()
-        return token_base64
 
     async def _select_proofs_to_send(
         self, proofs: List[Proof], amount_to_send: int

@@ -5,7 +5,7 @@ from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 
-from cashu.wallet.crud import get_keyset
+from cashu.wallet.crud import get_keysets
 from cashu.wallet.wallet import Wallet as Wallet
 
 async def open_yes_no_popup(title, question):
@@ -58,7 +58,7 @@ async def verify_mint(mint_wallet: Wallet, url: str):
     # dummy Wallet to check the database later
     # mint_wallet = Wallet(url, os.path.join(settings.cashu_dir, ctx.obj["WALLET_NAME"]))
     # we check the db whether we know this mint already and ask the user if not
-    mint_keysets = await get_keyset(mint_url=url, db=mint_wallet.db)
+    mint_keysets = await get_keysets(mint_url=url, db=mint_wallet.db)
     if mint_keysets is None:
         # we encountered a new mint and ask for a user confirmation
         return await open_yes_no_popup(
