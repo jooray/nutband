@@ -1,3 +1,5 @@
 kivy
 wheel
 cashu
+lxmf
+rns
