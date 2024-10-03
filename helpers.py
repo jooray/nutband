@@ -1,5 +1,4 @@
 import asyncio
-from kivy.app import App
 from kivy.uix.popup import Popup
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
@@ -8,20 +7,23 @@ from kivy.uix.label import Label
 from cashu.wallet.crud import get_keysets
 from cashu.wallet.wallet import Wallet as Wallet
 
+
 async def open_yes_no_popup(title, question):
     # Create a Future object to hold the result
     future = asyncio.Future()
 
     # Create layout for the Popup
-    layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+    layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
 
     # Add a Label with your message
     message_label = Label(text=question, size_hint_y=None, height=100)
-    message_label.bind(size=lambda *x: setattr(message_label, 'text_size', (message_label.width, None)))
+    message_label.bind(
+        size=lambda *x: setattr(message_label, "text_size", (message_label.width, None))
+    )
     layout.add_widget(message_label)
 
     # Create a horizontal layout for buttons
-    button_layout = BoxLayout(orientation='horizontal', spacing=10)
+    button_layout = BoxLayout(orientation="horizontal", spacing=10)
     yes_button = Button(text="Yes")
     no_button = Button(text="No")
 
@@ -37,7 +39,9 @@ async def open_yes_no_popup(title, question):
     layout.add_widget(button_layout)
 
     # Create and open the Popup
-    yes_no_popup = Popup(title=title, content=layout, size_hint=(None, None), size=(300, 200))
+    yes_no_popup = Popup(
+        title=title, content=layout, size_hint=(None, None), size=(300, 200)
+    )
     yes_no_popup.open()
 
     # Wait for the user to click a button
@@ -48,6 +52,7 @@ async def open_yes_no_popup(title, question):
 
     # Return the result
     return result
+
 
 async def verify_mint(mint_wallet: Wallet, url: str):
     """A helper function that asks the user if they trust the mint if the user
@@ -63,7 +68,7 @@ async def verify_mint(mint_wallet: Wallet, url: str):
         # we encountered a new mint and ask for a user confirmation
         return await open_yes_no_popup(
             "Unknown mint confirmation",
-            f"Do you trust the mint \"{url}\" and want to receive the tokens?",
+            f'Do you trust the mint "{url}" and want to receive the tokens?',
         )
     else:
         return True

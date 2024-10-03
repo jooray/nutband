@@ -1,5 +1,3 @@
-import base64
-import json
 import math
 import time
 import uuid
@@ -29,7 +27,20 @@ from cashu.core.crypto.secp import PrivateKey, PublicKey
 from cashu.core.db import Database
 from cashu.core.helpers import calculate_number_of_blank_outputs, sum_proofs
 from cashu.core.migrations import migrate_databases
-from cashu.core.models import CheckFeesRequest_deprecated, CheckSpendableRequest_deprecated, CheckSpendableResponse_deprecated, GetInfoResponse, PostMeltResponse_deprecated, GetMintResponse_deprecated, KeysetsResponse, PostMeltRequest, PostMintRequest, PostMintResponse, PostRestoreResponse, PostSwapRequest
+from cashu.core.models import (
+    CheckFeesRequest_deprecated,
+    CheckSpendableRequest_deprecated,
+    CheckSpendableResponse_deprecated,
+    GetInfoResponse,
+    PostMeltResponse_deprecated,
+    GetMintResponse_deprecated,
+    KeysetsResponse,
+    PostMeltRequest,
+    PostMintRequest,
+    PostMintResponse,
+    PostRestoreResponse,
+    PostSwapRequest,
+)
 from cashu.core.p2pk import Secret
 from cashu.core.settings import settings
 from cashu.core.split import amount_split
@@ -61,7 +72,7 @@ def async_set_httpx_client(func):
     """
 
     async def wrapper(self, *args, **kwargs):
-        if (not hasattr(self, 'httpx')) or (self.httpx is None):
+        if (not hasattr(self, "httpx")) or (self.httpx is None):
 
             # set proxy
             proxies_dict = {}
@@ -92,16 +103,12 @@ def async_set_httpx_client(func):
             # wrapper client has its own temporary identity and registers
             # in the reticulum network.
 
-            wrapper_client=LXMFWrapperClient()
+            wrapper_client = LXMFWrapperClient()
 
             # TODO: Config this:
-            mappings = {
-                "https://8333.space:3338": "197b2a93cdcd63217f0c7c08950abcde"
-            }
+            mappings = {"https://8333.space:3338": "197b2a93cdcd63217f0c7c08950abcde"}
 
-
-            self.httpx=LXMFProxy(wrapper_client, httpx_real,
-                                      False, mappings)
+            self.httpx = LXMFProxy(wrapper_client, httpx_real, False, mappings)
 
         return await func(self, *args, **kwargs)
 
