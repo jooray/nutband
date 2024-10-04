@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import sys
 import time
 from datetime import datetime
 from functools import wraps
@@ -22,9 +21,7 @@ from lxmf_wallet.wallet import Wallet as Wallet
 
 from loguru import logger
 
-from helpers import (
-    verify_mint
-)
+from helpers import verify_mint
 
 from cashu.core.base import TokenV3
 from cashu.core.helpers import sum_proofs
@@ -36,15 +33,17 @@ from cashu.wallet.crud import (
     get_seed_and_mnemonic,
 )
 from cashu.wallet.helpers import (
-   deserialize_token_from_string,
-   init_wallet,
+    deserialize_token_from_string,
+    init_wallet,
     list_mints,
 )
-#from cashu.nostr import receive_nostr, send_nostr
+
+# from cashu.nostr import receive_nostr, send_nostr
 
 
 walletname = "wallet"
 wallet = None
+
 
 # https://github.com/pallets/click/issues/85#issuecomment-503464628
 def coro(f):
@@ -84,7 +83,6 @@ async def receive(
     tokenObj: TokenV3,
 ):
     logger.debug(f"receive: {tokenObj}")
-    proofs = [p for t in tokenObj.token for p in t.proofs]
 
     includes_mint_info: bool = any([t.mint for t in tokenObj.token])
 
@@ -95,23 +93,7 @@ async def receive(
             tokenObj,
         )
     else:
-        # this is very legacy code, virtually any token should have mint information
-        # no mint information present, we extract the proofs and use wallet's default mint
-        # first we load the mint URL from the DB
-        keyset_in_token = proofs[0].id
-        assert keyset_in_token
-        # we get the keyset from the db
-        mint_keysets = await get_keyset(id=keyset_in_token, db=wallet.db)
-        assert mint_keysets, Exception("we don't know this keyset")
-        assert mint_keysets.mint_url, Exception("we don't know this mint's URL")
-        # now we have the URL
-        mint_wallet = await Wallet.with_db(
-            mint_keysets.mint_url,
-            os.path.join(settings.cashu_dir, wallet.name),
-        )
-        await mint_wallet.load_mint(keyset_in_token)
-        _, _ = await mint_wallet.redeem(proofs)
-        print(f"Received {sum_proofs(proofs)} sats")
+        raise Exception("no mint info retrieved.")
 
     # reload main wallet so the balance updates
     await wallet.load_proofs(reload=True)
@@ -129,11 +111,12 @@ async def pay(ctx, invoice: str, yes: bool):
             f" ({total_amount} sat with potential fees)" if fee_reserve_sat else ""
         )
         message = f"Pay {total_amount - fee_reserve_sat} sat{potential}?"
-        #click.confirm(
+        logger.debug(f"pay: {message}")
+        # click.confirm(
         #    message,
         #    abort=True,
         #    default=True,
-        #)
+        # )
 
     print("Paying Lightning invoice ...", end="", flush=True)
     assert total_amount > 0, "amount is not positive"
@@ -285,6 +268,7 @@ async def balance(verbose):
         )
     else:
         print(f"Balance: {wallet.available_balance} sat")
+
 
 async def pending(legacy, number: int, offset: int):
     wallet: Wallet = ctx.obj["WALLET"]
@@ -525,11 +509,13 @@ async def selfpay(all: bool = False):
 
 class MainWindow(BoxLayout):
 
-
     def show_error_popup(self, message):
-        popup = Popup(title='Error',
-                      content=Button(text=message, on_press=lambda x: popup.dismiss()),
-                      size_hint=(None, None), size=(400, 200))
+        popup = Popup(
+            title="Error",
+            content=Button(text=message, on_press=lambda x: popup.dismiss()),
+            size_hint=(None, None),
+            size=(400, 200),
+        )
         # Open the Popup
         popup.open()
 
@@ -537,7 +523,7 @@ class MainWindow(BoxLayout):
         input = self.text_field.text
         try:
             amount = int(input)
-        except:
+        except Exception:
             self.show_error_popup("no numeric amount in input field.")
             return
         if not amount > 0:
@@ -566,10 +552,11 @@ class MainWindow(BoxLayout):
                 )
                 trust_mint = await verify_mint(mint_wallet, mint_url)
                 if not trust_mint:
-                    self.status_label.text="Untrusted mint, aborting receive..."
+                    self.status_label.text = "Untrusted mint, aborting receive..."
                     return
             self.status_label.text = "Refreshing tokens with the mint..."
             newBalance = await receive(wallet, tokenObj)
+            logger.debug(f"New balance: {newBalance}")
             await self.update_balance()
             self.status_label.text = "Receive successful..."
 
@@ -590,10 +577,12 @@ class MainWindow(BoxLayout):
         self.status_label.text = "Now you can display mnemonic..."
 
     async def button_display_mnemonic_clicked(self):
-        if (self.mnemonic_button_enabled):
-            self.text_field.text=wallet.mnemonic
+        if self.mnemonic_button_enabled:
+            self.text_field.text = wallet.mnemonic
         else:
-            self.status_label.text = "Wait for 30 seconds, then press the button again..."
+            self.status_label.text = (
+                "Wait for 30 seconds, then press the button again..."
+            )
             self.btn_mnemonic.text = "Waiting to display mnemonic..."
             self.btn_mnemonic.disabled = True
             asyncio.create_task(self.wait_to_enable_mnemonic_button())
@@ -603,72 +592,91 @@ class MainWindow(BoxLayout):
 
     async def initialize_wallet(self):
         global wallet
-        self.status_label.text="🫸 Initializing wallet...🫷"
+        self.status_label.text = "🫸 Initializing wallet...🫷"
         db_path = os.path.join(settings.cashu_dir, walletname)
         # allow to perform migrations
-        wallet = await Wallet.with_db(settings.mint_url, db_path, name = walletname, skip_private_key = True)
+        wallet = await Wallet.with_db(
+            settings.mint_url, db_path, name=walletname, skip_private_key=True
+        )
         # load with private keys
-        wallet = await Wallet.with_db(settings.mint_url, db_path, name = walletname)
+        wallet = await Wallet.with_db(settings.mint_url, db_path, name=walletname)
         await init_wallet(wallet, load_proofs=True)
         await self.update_balance()
-        self.status_label.text="Wallet initialized, loading mint..."
+        self.status_label.text = "Wallet initialized, loading mint..."
         try:
             await wallet.load_mint()
         except Exception as e:
-            self.status_label.text=f"Error while loading mint: {e}"
+            self.status_label.text = f"Error while loading mint: {e}"
             logger.exception(e)
             raise e
-        self.status_label.text="All ready !"
+        self.status_label.text = "All ready !"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-        self.orientation = 'vertical'
+        self.orientation = "vertical"
 
         # Balance Label
-        self.balance_label = Label(text='Loading balance...', font_size='36sp', size_hint_y=None, height=40)
+        self.balance_label = Label(
+            text="Loading balance...", font_size="36sp", size_hint_y=None, height=40
+        )
         self.add_widget(self.balance_label)
 
         # Status Label
-        self.status_label = Label(text='Loading wallet...', font_size='36sp', size_hint_y=None, height=40)
+        self.status_label = Label(
+            text="Loading wallet...", font_size="36sp", size_hint_y=None, height=40
+        )
         self.add_widget(self.status_label)
-
 
         # Text Field for input/output
         self.text_field = TextInput(height=80, multiline=True, size_hint_y=1)
         self.add_widget(self.text_field)
 
         # Send Button
-        btn_send = Button(text='Send', size_hint_y=None, height=40)
-        btn_send.bind(on_press=lambda x: asyncio.create_task(self.button_send_clicked()))
+        btn_send = Button(text="Send", size_hint_y=None, height=40)
+        btn_send.bind(
+            on_press=lambda x: asyncio.create_task(self.button_send_clicked())
+        )
         self.add_widget(btn_send)
 
         # Receive Button
-        btn_receive = Button(text='Receive', size_hint_y=None, height=40)
-        btn_receive.bind(on_press=lambda x: asyncio.create_task(self.button_receive_clicked()))
+        btn_receive = Button(text="Receive", size_hint_y=None, height=40)
+        btn_receive.bind(
+            on_press=lambda x: asyncio.create_task(self.button_receive_clicked())
+        )
         self.add_widget(btn_receive)
 
         # Pay Button
-        btn_pay = Button(text='Pay (lightning invoice)', size_hint_y=None, height=40)
+        btn_pay = Button(text="Pay (lightning invoice)", size_hint_y=None, height=40)
         btn_pay.bind(on_press=lambda x: asyncio.create_task(self.button_pay_clicked()))
-        btn_pay.disabled=True
+        btn_pay.disabled = True
         self.add_widget(btn_pay)
 
         # Invoice Button
-        btn_invoice = Button(text='Invoice (create lightning invoice)', size_hint_y=None, height=40)
-        btn_invoice.bind(on_press=lambda x: asyncio.create_task(self.button_invoice_clicked()))
-        btn_invoice.disabled=True
+        btn_invoice = Button(
+            text="Invoice (create lightning invoice)", size_hint_y=None, height=40
+        )
+        btn_invoice.bind(
+            on_press=lambda x: asyncio.create_task(self.button_invoice_clicked())
+        )
+        btn_invoice.disabled = True
         self.add_widget(btn_invoice)
 
         # Display mnemonic
         self.mnemonic_button_enabled = False
-        self.btn_mnemonic = Button(text='Display mnemonic seed backup', size_hint_y=None, height=40)
-        self.btn_mnemonic.bind(on_press=lambda x: asyncio.create_task(self.button_display_mnemonic_clicked()))
+        self.btn_mnemonic = Button(
+            text="Display mnemonic seed backup", size_hint_y=None, height=40
+        )
+        self.btn_mnemonic.bind(
+            on_press=lambda x: asyncio.create_task(
+                self.button_display_mnemonic_clicked()
+            )
+        )
         self.add_widget(self.btn_mnemonic)
-
 
     # Placeholder for adapted button click event methods
     # These methods need to be filled with adapted logic from the original PyQt6 implementation
+
 
 class NutbandApp(App):
     def build(self):
@@ -676,6 +684,7 @@ class NutbandApp(App):
 
     def on_start(self):
         task = asyncio.create_task(self.root.initialize_wallet())
+
         async def print_exception(task):
             await task
             if task.done() and not task.cancelled():
@@ -683,12 +692,12 @@ class NutbandApp(App):
                 if exception:
                     print("Exception:", exception)
                     traceback.print_tb(exception.__traceback__)
+
         asyncio.create_task(print_exception(task))
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.set_debug(True)
-    loop.run_until_complete(NutbandApp().async_run(async_lib='asyncio'))
+    loop.run_until_complete(NutbandApp().async_run(async_lib="asyncio"))
     loop.close()
