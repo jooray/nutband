@@ -771,6 +771,16 @@ files = [
 ]
 
 [[package]]
+name = "docopt"
+version = "0.6.2"
+description = "Pythonic argument parser, that will make you smile"
+optional = false
+python-versions = "*"
+files = [
+    {file = "docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"},
+]
+
+[[package]]
 name = "docutils"
 version = "0.21.2"
 description = "Docutils -- Python Documentation Utilities"
@@ -1333,6 +1343,17 @@ files = [
 ]
 
 [[package]]
+name = "openstep-parser"
+version = "2.0.1"
+description = "OpenStep plist reader into python objects"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "openstep_parser-2.0.1-py3-none-any.whl", hash = "sha256:5921efe694fb48137ad5eece58eac49a5a4e0745da5868eb3bd98bc1e41b35b2"},
+    {file = "openstep_parser-2.0.1.tar.gz", hash = "sha256:f37ed387ede1aa6fa2610f9db88f2528d7218b2f42fd34271b4a20b578c68c0e"},
+]
+
+[[package]]
 name = "packaging"
 version = "24.1"
 description = "Core utilities for Python packages"
@@ -1353,6 +1374,21 @@ files = [
     {file = "pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08"},
     {file = "pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712"},
 ]
+
+[[package]]
+name = "pbxproj"
+version = "4.2.1"
+description = "XCode Project manipulation library for Python"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "pbxproj-4.2.1-py3-none-any.whl", hash = "sha256:d459b4028a640c31d8798d61fba891312f5e788a7a2ac62e26f82f8ddace64a9"},
+    {file = "pbxproj-4.2.1.tar.gz", hash = "sha256:fc3ee3069730a2aba562629ec5942a2ce7abc203b035b7ef672016d92339ecfd"},
+]
+
+[package.dependencies]
+docopt = "*"
+openstep-parser = ">=1.5.1"
 
 [[package]]
 name = "pexpect"
@@ -2218,4 +2254,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "6f18c5ecf176b43e0b13f522b36c2e1a70cd20721b51701fb097ba9baafb84cc"
+content-hash = "e0c0a82a9900709257845daf0706b5595828217f76d82e5e8b60208e511b768f"
