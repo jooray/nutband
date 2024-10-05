@@ -317,7 +317,7 @@ class LedgerAPI(object):
             int(amt): PublicKey(bytes.fromhex(val), raw=True)
             for amt, val in keys.items()
         }
-        keyset = WalletKeyset(public_keys=keyset_keys, mint_url=url)
+        keyset = WalletKeyset(unit="sat", public_keys=keyset_keys, mint_url=url)
         return keyset
 
     @async_set_httpx_client
@@ -346,7 +346,7 @@ class LedgerAPI(object):
             int(amt): PublicKey(bytes.fromhex(val), raw=True)
             for amt, val in keys.items()
         }
-        keyset = WalletKeyset(id=keyset_id, public_keys=keyset_keys, mint_url=url)
+        keyset = WalletKeyset(unit="sat", id=keyset_id, public_keys=keyset_keys, mint_url=url)
         return keyset
 
     @async_set_httpx_client
