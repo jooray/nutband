@@ -1,0 +1,6 @@
+{
+  "mappings": {
+    "https://mint.minibits.cash/Bitcoin": "0123456789abcdef0123456789abcdef",
+    "https://8333.space:3338": "abcdef0123456789abcdef0123456789"
+  }
+}

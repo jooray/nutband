@@ -41,17 +41,11 @@ is the name of the identity (in case you run more proxies).
 
 ## Mapping on the client side
 
-The map is now static in source code:
+The mapping is defined in `lxmf_wallet/config.json`.
+This file does not exist in the repository, so you should create it by copying from
+`lxmf_wallet/config.json.example` and adjusting to your needs.
 
-``` python
-            # TODO: Config this:
-            mappings = {
-                "https://8333.space:3338": "197b2a93cdcd63217f0c7c08950abcde"
-            }
-```
-
-You should change the URL of the mint and the identity. URL does not have to work,
-it can be bogus.
+URL does not have to work, it can be bogus.
 
 ## Status and plans
 
@@ -67,7 +61,7 @@ My build and dev environment [is dockerized](https://github.com/jooray/docker-xr
 
 ### macOS
 
-To build using buildozer on macOS you need to perform the following commands first:
+To build an Android or iOS app using buildozer on macOS you need to perform the following commands first:
 
 ``` bash
 brew install libffi

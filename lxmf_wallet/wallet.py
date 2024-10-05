@@ -1,4 +1,6 @@
+import json
 import math
+import pathlib
 import time
 import uuid
 from itertools import groupby
@@ -64,6 +66,19 @@ from cashu.wallet.p2pk import WalletP2PK
 from cashu.wallet.secrets import WalletSecrets
 
 
+def load_config():
+    try:
+        f = pathlib.Path(__file__).with_name("config.json")
+        config = json.load(f.open())
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "File lxmf_wallet/config.json not found. "
+            "Copy lxmf_wallet/config.json.example to lxmf_wallet/config.json "
+            "and adjust settings to your needs."
+        )
+    return config
+
+
 def async_set_httpx_client(func):
     """
     Decorator that wraps around any async class method of LedgerAPI that makes
@@ -105,8 +120,14 @@ def async_set_httpx_client(func):
 
             wrapper_client = LXMFWrapperClient()
 
-            # TODO: Config this:
-            mappings = {"https://8333.space:3338": "197b2a93cdcd63217f0c7c08950abcde"}
+            config = load_config()
+            # check whether mappings are legit
+            mappings = config["mappings"]
+            for k, v in mappings.items():
+                assert k.startswith("https://"), "mapping URLs must start with https://"
+                assert len(v) == 32 and all(
+                    c in "0123456789abcdef" for c in v
+                ), "mapping destinations must be lowercase hex strings of length 32"
 
             self.httpx = LXMFProxy(wrapper_client, httpx_real, False, mappings)
 
@@ -346,7 +367,12 @@ class LedgerAPI(object):
             int(amt): PublicKey(bytes.fromhex(val), raw=True)
             for amt, val in keys.items()
         }
-        keyset = WalletKeyset(unit="sat", id=keyset_id, public_keys=keyset_keys, mint_url=url)
+        keyset = WalletKeyset(
+            unit="sat",
+            id=keyset_id,
+            public_keys=keyset_keys,
+            mint_url=url,
+        )
         return keyset
 
     @async_set_httpx_client

@@ -161,3 +161,6 @@ cython_debug/
 # buildozer
 .buildozer/
 bin/
+
+# lxmf wallet config
+lxmf_wallet/config.json
