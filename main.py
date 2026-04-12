@@ -23,12 +23,11 @@ from loguru import logger
 
 from helpers import verify_mint
 
-from cashu.core.base import TokenV3
+from cashu.core.base import TokenV3, MintQuote, MintQuoteState
 from cashu.core.helpers import sum_proofs
 from cashu.core.settings import settings
-from cashu.nostr.client.client import NostrClient
 from cashu.wallet.crud import (
-    get_lightning_invoices,
+    get_bolt11_mint_quotes,
     get_reserved_proofs,
     get_seed_and_mnemonic,
 )
@@ -38,7 +37,7 @@ from cashu.wallet.helpers import (
     list_mints,
 )
 
-# from cashu.nostr import receive_nostr, send_nostr
+# nostr send/receive removed in cashu 0.20
 
 
 walletname = "wallet"
@@ -156,15 +155,15 @@ async def invoice(amount: int, id: str, split: int, no_check: bool):
         await wallet.mint(amount, split=optional_split)
     # user requests an invoice
     elif amount and not id:
-        invoice = await wallet.request_mint(amount)
-        if invoice.bolt11:
+        mint_quote = await wallet.request_mint(amount)
+        if mint_quote.request:
             print(f"Pay invoice to mint {amount} sat:")
             print("")
-            print(f"Invoice: {invoice.bolt11}")
+            print(f"Invoice: {mint_quote.request}")
             print("")
             print(
                 "You can use this command to check the invoice: cashu invoice"
-                f" {amount} --id {invoice.id}"
+                f" {amount} --id {mint_quote.quote}"
             )
             if no_check:
                 return
@@ -179,7 +178,7 @@ async def invoice(amount: int, id: str, split: int, no_check: bool):
             while time.time() < check_until and not paid:
                 time.sleep(3)
                 try:
-                    await wallet.mint(amount, split=optional_split, id=invoice.id)
+                    await wallet.mint(amount, split=optional_split, id=mint_quote.quote)
                     paid = True
                     print(" Invoice paid.")
                 except Exception as e:
@@ -221,22 +220,22 @@ async def swap():
     amount = int(input("Enter amount to swap in sat: "))
     assert amount > 0, "amount is not positive"
 
-    # request invoice from incoming mint
-    invoice = await incoming_wallet.request_mint(amount)
+    # request mint quote from incoming mint
+    mint_quote = await incoming_wallet.request_mint(amount)
 
     # pay invoice from outgoing mint
     total_amount, fee_reserve_sat = await outgoing_wallet.get_pay_amount_with_fees(
-        invoice.bolt11
+        mint_quote.request
     )
     if outgoing_wallet.available_balance < total_amount:
         raise Exception("balance too low")
     _, send_proofs = await outgoing_wallet.split_to_send(
         outgoing_wallet.proofs, total_amount, set_reserved=True
     )
-    await outgoing_wallet.pay_lightning(send_proofs, invoice.bolt11, fee_reserve_sat)
+    await outgoing_wallet.pay_lightning(send_proofs, mint_quote.request, fee_reserve_sat)
 
     # mint token in incoming mint
-    await incoming_wallet.mint(amount, id=invoice.id)
+    await incoming_wallet.mint(amount, id=mint_quote.quote)
 
     await incoming_wallet.load_proofs(reload=True)
     await print_mint_balances(incoming_wallet, show_mints=True)
@@ -345,34 +344,27 @@ async def locks(ctx):
 
 async def invoices():
     wallet: Wallet = ctx.obj["WALLET"]
-    invoices = await get_lightning_invoices(db=wallet.db)
-    if len(invoices):
+    quotes = await get_bolt11_mint_quotes(db=wallet.db)
+    if len(quotes):
         print("")
         print("--------------------------\n")
-        for invoice in invoices:
-            print(f"Paid: {invoice.paid}")
-            print(f"Incoming: {invoice.amount > 0}")
-            print(f"Amount: {abs(invoice.amount)}")
-            if invoice.id:
-                print(f"ID: {invoice.id}")
-            if invoice.preimage:
-                print(f"Preimage: {invoice.preimage}")
-            if invoice.time_created:
-                d = datetime.utcfromtimestamp(
-                    int(float(invoice.time_created))
-                ).strftime("%Y-%m-%d %H:%M:%S")
+        for quote in quotes:
+            print(f"State: {quote.state}")
+            print(f"Amount: {quote.amount} sat")
+            if quote.quote:
+                print(f"Quote ID: {quote.quote}")
+            if quote.created_time:
+                d = datetime.utcfromtimestamp(int(quote.created_time)).strftime("%Y-%m-%d %H:%M:%S")
                 print(f"Created: {d}")
-            if invoice.time_paid:
-                d = datetime.utcfromtimestamp(int(float(invoice.time_paid))).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+            if quote.paid_time:
+                d = datetime.utcfromtimestamp(int(quote.paid_time)).strftime("%Y-%m-%d %H:%M:%S")
                 print(f"Paid: {d}")
             print("")
-            print(f"Payment request: {invoice.bolt11}")
+            print(f"Payment request: {quote.request}")
             print("")
             print("--------------------------\n")
     else:
-        print("No invoices found.")
+        print("No mint quotes found.")
 
 
 async def wallets():
@@ -412,13 +404,14 @@ async def info(mint: bool, mnemonic: bool):
         print(f"Settings: {settings.env_file}")
     if settings.tor:
         print(f"Tor enabled: {settings.tor}")
-    if settings.nostr_private_key:
+    if wallet.seed:
         try:
-            client = NostrClient(private_key=settings.nostr_private_key, connect=False)
-            print(f"Nostr public key: {client.public_key.bech32()}")
-            print(f"Nostr relays: {settings.nostr_relays}")
-        except Exception:
-            print("Nostr: Error. Invalid key.")
+            from cashu.core.nostr import derive_nostr_keypair, get_npub
+            _, pubkey_hex = derive_nostr_keypair(wallet.seed)
+            npub = get_npub(pubkey_hex)
+            print(f"Nostr public key (derived from wallet seed, NIP-06): {npub}")
+        except Exception as e:
+            print(f"Nostr: could not derive keypair: {e}")
     if settings.socks_proxy:
         print(f"Socks proxy: {settings.socks_proxy}")
     if settings.http_proxy:
