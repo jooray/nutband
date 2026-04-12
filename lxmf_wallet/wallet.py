@@ -18,7 +18,8 @@ from cashu.core.base import (
     BlindedMessage,
     BlindedSignature,
     DLEQWallet,
-    Invoice,
+    MintQuote,
+    MintQuoteState,
     Proof,
     TokenV3,
     TokenV3Token,
@@ -38,6 +39,8 @@ from cashu.core.models import (
     GetMintResponse_deprecated,
     KeysetsResponse,
     PostMeltRequest,
+    PostMintQuoteRequest,
+    PostMintQuoteResponse,
     PostMintRequest,
     PostMintResponse,
     PostRestoreResponse,
@@ -49,15 +52,18 @@ from cashu.core.split import amount_split
 from cashu.tor.tor import TorProxy
 from cashu.wallet.crud import (
     bump_secret_derivation,
+    get_bolt11_mint_quote,
+    get_bolt11_mint_quotes,
     get_keysets,
     get_proofs,
     invalidate_proof,
     secret_used,
     set_secret_derivation,
+    store_bolt11_mint_quote,
+    store_bolt11_melt_quote,
     store_keyset,
-    store_lightning_invoice,
     store_proof,
-    update_lightning_invoice,
+    update_bolt11_mint_quote,
     update_proof,
 )
 from cashu.wallet import migrations
@@ -421,31 +427,36 @@ class LedgerAPI(object):
 
     @async_set_httpx_client
     @async_ensure_mint_loaded
-    async def request_mint(self, amount) -> Invoice:
-        """Requests a mint from the server and returns Lightning invoice.
+    async def request_mint(self, amount) -> MintQuote:
+        """Requests a mint quote from the server and returns a MintQuote.
 
         Args:
             amount (int): Amount of tokens to mint
 
         Returns:
-            Invoice: Lightning invoice
+            MintQuote: Mint quote with bolt11 invoice
 
         Raises:
             Exception: If the mint request fails
         """
-        logger.trace("Requesting mint: GET /mint")
-        resp = await self.httpx.get(join(self.url, "mint"), params={"amount": amount})
+        logger.trace("Requesting mint quote: POST /v1/mint/quote/bolt11")
+        quote_request = PostMintQuoteRequest(amount=amount, unit="sat")
+        resp = await self.httpx.post(
+            join(self.url, "v1/mint/quote/bolt11"),
+            json=quote_request.dict(),
+        )
         self.raise_on_error(resp)
         return_dict = resp.json()
-        mint_response = GetMintResponse_deprecated.parse_obj(return_dict)
-        decoded_invoice = bolt11.decode(mint_response.pr)
-        return Invoice(
+        quote_response = PostMintQuoteResponse.parse_obj(return_dict)
+        return MintQuote(
+            quote=quote_response.quote,
+            method="bolt11",
+            request=quote_response.request,
+            checking_id=quote_response.quote,
+            unit="sat",
             amount=amount,
-            bolt11=mint_response.pr,
-            payment_hash=decoded_invoice.payment_hash,
-            id=mint_response.hash,
-            out=False,
-            time_created=int(time.time()),
+            state=MintQuoteState.unpaid,
+            created_time=int(time.time()),
         )
 
     @async_set_httpx_client
@@ -686,18 +697,18 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
             return
         self.proofs = await get_proofs(db=self.db)
 
-    async def request_mint(self, amount: int) -> Invoice:
+    async def request_mint(self, amount: int) -> MintQuote:
         """Request a Lightning invoice for minting tokens.
 
         Args:
             amount (int): Amount for Lightning invoice in satoshis
 
         Returns:
-            Invoice: Lightning invoice
+            MintQuote: Mint quote with bolt11 invoice
         """
-        invoice = await super().request_mint(amount)
-        await store_lightning_invoice(db=self.db, invoice=invoice)
-        return invoice
+        quote = await super().request_mint(amount)
+        await store_bolt11_mint_quote(db=self.db, quote=quote)
+        return quote
 
     async def mint(
         self,
@@ -752,8 +763,8 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
         proofs = await self._construct_proofs(promises, secrets, rs, derivation_paths)
 
         if id:
-            await update_lightning_invoice(
-                db=self.db, id=id, paid=True, time_paid=int(time.time())
+            await update_bolt11_mint_quote(
+                db=self.db, quote=id, state=MintQuoteState.issued, paid_time=int(time.time())
             )
             # store the mint_id in proofs
             async with self.db.connect() as conn:
@@ -892,18 +903,21 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
                 await update_proof(p, melt_id=melt_id, conn=conn)
 
         decoded_invoice = bolt11.decode(invoice)
-        invoice_obj = Invoice(
-            amount=-sum_proofs(proofs),
-            bolt11=invoice,
-            payment_hash=decoded_invoice.payment_hash,
-            # preimage=status.preimage,
-            paid=False,
-            time_paid=int(time.time()),
-            id=melt_id,  # store the same ID in the invoice
-            out=True,  # outgoing invoice
+        from cashu.core.base import MeltQuote, MeltQuoteState
+        from cashu.wallet.crud import store_bolt11_melt_quote
+        melt_quote_obj = MeltQuote(
+            quote=melt_id,
+            method="bolt11",
+            request=invoice,
+            checking_id=melt_id,
+            unit="sat",
+            amount=sum_proofs(proofs),
+            fee_reserve=0,
+            state=MeltQuoteState.unpaid,
+            payment_preimage=None,
         )
-        # store invoice in db as not paid yet
-        await store_lightning_invoice(db=self.db, invoice=invoice_obj)
+        # store melt quote in db as not paid yet
+        await store_bolt11_melt_quote(db=self.db, quote=melt_quote_obj)
 
         status = await super().pay_lightning(proofs, invoice, change_outputs)
 
@@ -921,12 +935,15 @@ class Wallet(LedgerAPI, WalletP2PK, WalletHTLC, WalletSecrets):
 
         # update paid status in db
         logger.trace(f"Settings invoice {melt_id} to paid.")
-        await update_lightning_invoice(
+        from cashu.core.base import MeltQuoteState
+        from cashu.wallet.crud import update_bolt11_melt_quote
+        await update_bolt11_melt_quote(
             db=self.db,
-            id=melt_id,
-            paid=True,
-            time_paid=int(time.time()),
-            preimage=status.preimage,
+            quote=melt_id,
+            state=MeltQuoteState.paid,
+            paid_time=int(time.time()),
+            fee_paid=0,
+            payment_preimage=status.preimage if hasattr(status, "preimage") else "",
         )
 
         # handle change and produce proofs
