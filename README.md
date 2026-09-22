@@ -1,5 +1,23 @@
 # nutband
 
+## No longer maintained
+
+I do not maintain this project any more. It was an experiment with Cashu over
+Reticulum and LXMF. I work with MeshCore these days, so if mesh networking is what
+brought you here, look at [MeshCore-BitChat](https://github.com/jooray/MeshCore-BitChat)
+and [Roadstr](https://github.com/jooray/roadstr). Neither of them does Cashu. For that
+see [CashuPayServer](https://github.com/jooray/cashupayserver) and
+[cashu-wallet-php](https://github.com/jooray/cashu-wallet-php).
+
+For what I am building now, see my
+[project showcase](https://juraj.bednar.io/showcase/).
+
+I also write books and work on things that are not code: my cypherpunk novel
+[Tamers of Entropy](https://tamersofentropy.net/), my English podcast
+[Option Plus](https://optionplus.io/), [my blog](https://juraj.bednar.io/en/blog-en/),
+and [everything else](https://juraj.bednar.io/en). There is also
+[more about me](https://juraj.bednar.io/en/about-me/).
+
 Experimental minimalistic python-only user interface for cashu, using
 [cashu nutshell](https://github.com/cashubtc/nutshell) implementation.
 
